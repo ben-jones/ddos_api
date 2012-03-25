@@ -49,6 +49,9 @@ class DDOS_API
   def get_failover_connection
     @@failover_connect
   end
+  def get_failover_timeout
+    @@failover_timeout
+  end
   
   
   #these functions are the actual meat of the API
@@ -200,21 +203,41 @@ class DDOS_API
 
   #helper functions that must be private
   private
+  #ddos_check: will check all the receiving connections to determine if a failover
+  # should occur. If nothing is received for @@failover_timeout seconds, then this
+  # server has been DDOSed and if possible, should negotiate a failover. Otherwise,
+  # start talking to the backup server for that given server
+  def ddos_check
+    
+
   #this method will determine if a failover is needed by constantly checking when
   #the last piece of data was received. After @@failover_timeout seconds with no
   #new data and if there is no data waiting on @@receive_connections, then this
   #function will trigger a failover
-  def ddos_check(timestamp)
+  def old_ddos_check(timestamp)
     begin
       #wait for preset length of time
-      timeout(@@failover_timeout) do end
+      timeout(@@failover_timeout) do
+        time = 1
+        while true 
+          puts "#{time}\n"
+          sleep 1
+          time += 1
+        end
+        puts "out of timeout loop"
+      end
       rescue TimeoutError
         return if timestamp < @@last_data_received
         length = @@receive_connections.length -1
+        #now make sure that no one has
         0.upto(length) do |i|
            break if data = @@receive_connections[i].gets
         end
-        self.failover if data.nil?
+        #if there has not been any activity, then begin failover
+        if data.nil? then
+          puts "\nInitiating Failover\n"
+          self.failover
+        end
     end
   end
 
