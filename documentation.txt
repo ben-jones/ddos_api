@@ -1,0 +1,19 @@
+DDOS_API
+Ben Jones
+Spring 2012
+
+		Documentation for DDOS_API
+
+Inital Setup:
+       In order to use the API, there are several steps that you will need to take
+       
+       1. Create a text file containing the sequence of servers to failover to. The
+       	  file should be formatted as "ip# port#\n" with the ip address replacing ip#
+	  and the port number replacing port#
+       
+       2. Inside your program run the method config_api("filename.txt") with
+          "filename.txt" replaced with the name of your text file. 
+	  Note: If you want to know where the failover is set to be sent to, it
+	  	is helpful to realize that every statement returns a value and
+		config_api returns an array with the port and ip of the connection.
+		The method get_failover_connection will also return the info.

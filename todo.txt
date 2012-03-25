@@ -1,0 +1,16 @@
+1. write a thread to accept files-> acceptance thread
+
+2. realize that I am writing a single instance for a single server. This means one 
+   local ip address and port number to accept connections from. Each new server
+   instantiates and configures their own DDOS_API object. 
+   	a. need to change class instance variables to object instance variables
+	   this is every variable in the first set of variable
+	b. create one thread for open receiving connections-> just use select and all
+	   goes to same place-> io thread
+	c. have reference to receiving object somewhere-> whether instantiated in API
+	   or not
+	   i. be able to marshall object that i have a reference to
+
+3. rewrite backup functions to use marshaling and call from io thread
+
+4. rewrite send and receive to accomodate only one incoming

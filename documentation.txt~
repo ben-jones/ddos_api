@@ -1,0 +1,13 @@
+DDOS_API
+Ben Jones
+Spring 2012
+
+		Documentation for DDOS_API
+
+Inital Setup:
+       In order to use the API, there are several steps that you will need to take
+       
+       1. Create a text file containing the sequence of servers to failover to. The
+       	  file should be formatted as "ip# port#\n" with the ip address replacing ip#
+	  and the port number replacing port#
+       2. 
