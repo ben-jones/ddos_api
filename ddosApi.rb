@@ -384,6 +384,13 @@ class DDOS_API
 
   #we are now done with threading functions so move onto other public methods
   
+  #check_status(nil): examine the connections on the status_unsure list and if a
+  # server has exceeded the time limit to respond to the send_alive call or the
+  # send_alive call returns that the server is dead(designed to make testing easier)
+  # then close the connection and delete it
+  def check_status()
+    
+  end
 
   #send_data: this function will send proc_data to the given connection.
   # this is yet another overloaded version of the send_data method. This version will
