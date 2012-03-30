@@ -11,13 +11,12 @@
   Special Note: This API is far from perfect and needs a number of changes to create
     a more effective implementation. Chief among these concerns is a need for a
     better data structure for connections of all types. I hope to address this in
-    future problems
+    future revisions
 =end
 
 #I will need to methods from net/http and socket
 require 'net/http'
 require 'socket'
-require 'timeout.rb'
 
 class DDOS_API  
 
@@ -38,7 +37,6 @@ class DDOS_API
   #connection is dead or alive
   #fixMe-> search and replace for references to time stamp-> changed from 1st to 3rd
   # element
-  #fixMe-> ensure correct reference to rec_connects, not receive_connections
   #rec_sem is a mutex to provide mutual exclusion
   @rec_connects
 
@@ -226,13 +224,15 @@ class DDOS_API
   # failover that connection
   def input_thread
     #fixMe-> add failover logic and failover_server function for monitored
-    #connections
+    # connections
     #loop until the API is killed- note using dc because I don't have any writes or
     # exception streams that I care about
     while !@@kill do
       #this is really inefficient in terms of memory copying, but I need to make sure
-      #that @rec_connects is not modified while I wait for IO and I will use
-      #input_array many times
+      # that @rec_connects is not modified while I wait for IO and I will use
+      # input_array many times
+      #fixMe-> may need to change how I get input because this will take a
+      # comparatively long time and such a long data access will reduce concurrency
       @rec_sem.lock
       input_array = @rec_connects[0] 
       #now let someone else use the connections
@@ -242,7 +242,7 @@ class DDOS_API
       #now iterate over every connection waiting to give input
       index = 0
       #if there has not been any input in @fail_timeout seconds, then assume that 
-      #the local server was DDOSed
+      # the local server was DDOSed
       self.failover_all if inputs.nil?
       inputs.each do |connection|
         #now find the appropriate index to the connections that have received data
@@ -253,7 +253,7 @@ class DDOS_API
         #now get the @rec_connects data back for some writes
         @rec_sem.lock
         #reset the timestamp for this connection to the current time
-        @rec_connects[0][index] = Time.now
+        @rec_connects[4][index] = Time.now
         #if this connection was marked as dead, now mark it as alive
         @rec_connects[5][index] = true
         #and give @rec_connects back to other processes
@@ -267,8 +267,8 @@ class DDOS_API
       for 0..input_array.length do |num|
 
         #if a server has not sent anything in failover timeout seconds, then
-        #check if the server is alive. If not, then fail it over
-        #note that input_array[5] is true if the connection is alive
+        # check if the server is alive. If not, then fail it over
+        #Note that input_array[5] is true if the connection is alive
         if input_array[5][num] && input_array[3][num] < (Time.now - @fail_timeout) then
           #just to be sure that nothing has changed since this does not account for
           # the last round of IO, ensure that @rec_connects is the same as 
@@ -287,7 +287,7 @@ class DDOS_API
             address , port = input_array[num], input_array[2][num]
 
             #for a more versatile API, this should be changed to accomodate
-            #monitoring of more than one server
+            # monitoring of more than one server
             #acquire lock on the @send_backups data
             @send_back_sem.lock
             if address == @send_backups[1] && port = @send_backups[2] then
@@ -305,7 +305,7 @@ class DDOS_API
               @dependents[0].each do |dependent|
                 [dep_ip, dep_port] = dependent.remote_ip.ip_unpack
                 #either use an existing connection, or open a new one if the local
-                #server is not communicating with it
+                # server is not communicating with it
                 dep_index = find_by_ip(dep_ip, dep_port)
                 failover_server(send_index, -1, dep_ip, dep_port) if dep_index.nil?
                 failover_server(send_index, -1, dep_index)
@@ -323,7 +323,7 @@ class DDOS_API
               @send_back_sem.unlock
 
               #if this server is dependent upon the local server, then leave it in
-              #the connection list, otherwise, remove it from the connection list
+              # the connection list, otherwise, remove it from the connection list
               if(find_by_ip(address, port, @dependents) != nil) then
                 #do nothing
               else then
@@ -355,9 +355,9 @@ class DDOS_API
   # force_backup seconds
   def backup_thread
     #this thread does not need to run very often and I want to make sure it is not
-    #frequently scheduled. Therefore, I am going to do a join on the input thread
-    #until time expires. Note that this join will never return anything other than 
-    #nil because the input thread is in an infinite loop and is essentially a wait
+    # frequently scheduled. Therefore, I am going to do a join on the input thread
+    # until time expires. Note that this join will never return anything other than 
+    # nil because the input thread is in an infinite loop and is essentially a wait
     until @input_threadT.join(@force_backup) do
       backups_to_force = []
       #find any backups that are too old
@@ -378,8 +378,8 @@ class DDOS_API
   end
 
   #send_data: this function will send proc_data to the given connection.
-  #this is yet another overloaded version of the send_data method. This version will
-  #create a new socket from ip_address and port_num
+  # this is yet another overloaded version of the send_data method. This version will
+  # create a new socket from ip_address and port_num
   def send_data(address, port_num, *proc_data)
     connection = TCPSocket.new(address, port_num)
     #acquire lock on data
@@ -391,7 +391,7 @@ class DDOS_API
     self.send_data(connect_index, proc_data)
   end
   #this function just looks up the connection info via its connectionIndex and then
-  #sends the data
+  # sends the data
   def send_data(connect_index, *proc_data)
     #if this server has been "killed", then don't send anything
     return nil if @kill
@@ -424,7 +424,7 @@ class DDOS_API
     return nil if @@kill
     
     #read in the first 5 characters to determine where to go from here and then 
-    #read in the rest of the data up to the next seperator, |:
+    # read in the rest of the data up to the next seperator, |:
     #acquire data lock
     @rec_sem.lock
     meth_sel =  @rec_connects[0][index].read(5)
@@ -468,7 +468,7 @@ class DDOS_API
     @send_sem.unlock
 
     #if there is not a sending connection for the id yet, such as if data has only 
-    #been received, then create a new connection to send the backup
+    # been received, then create a new connection to send the backup
     if connection.nil? then
       #acquire data lock
       @rec_sem.lock
@@ -479,7 +479,7 @@ class DDOS_API
       ip, port = connect_to_copy.remote_server.ip_unpack
       connection = TCPSocket.new(ip, port)
       #now add the connection to @send_connects, but don't add it to @send_backups
-      #because we do not know if it could handle failover
+      # because we do not know if it could handle failover
       #acquire lock on data
       @send_sem.lock
       @send_connects[0] << connection
@@ -514,9 +514,9 @@ class DDOS_API
   end
 
   #receive_backup: will receive a backup from a process and compare it to existing
-  #backups. If it is newer, it will replace the older backup and if not, it will
-  #keep the old backup. This function returns 0 for error, 1 if it used this backup,
-  #and 2 if it used the old backup
+  # backups. If it is newer, it will replace the older backup and if not, it will
+  # keep the old backup. This function returns 0 for error, 1 if it used this backup,
+  # and 2 if it used the old backup
   def receive_backup(backup_data)
     time, backup_data = backup_data.split("|: ")
     
@@ -544,8 +544,8 @@ class DDOS_API
   end
 
   #failover_server(source_serv, dest_serv, rec_serv): this function will 
-  #instruct the recepient server, rec_serv, to begin using dest_serv instead of 
-  #source_serv. 
+  # instruct the recepient server, rec_serv, to begin using dest_serv instead of 
+  # source_serv. 
   #fixMe-> a dest_serv of -1 is a reference to self
   def failover_server(source_serv, dest_serv, rec_serv)
    #fixMe-> finish writing
@@ -553,24 +553,8 @@ class DDOS_API
 
   #send_alive: will send a check alive message to a remote server to see if it is
   # still alive
-  def check_alive(index)
+  def send_alive(index)
     #fixMe-> finish writing
-  end
-  
-  #proc_alive: will process an incoming check_alive request and adjust accordingly
-  # the data structures to reflect the receipt of new input
-  def proc_alive(index, data)
-    #fixMe-> finish writing and switch some functionality to check_alive
-
-    #now either tell a remote server the status of the local server or update the
-    # status of a remote connection
-
-    #start with the case that this is a response to an earlier query and we need to
-    # update a remote server's status
-    if( data === "send") then
-      
-    alive = true if !@@kill && @alive
-    else alive = false
 
     #get the id for the given index
     #acquire data
@@ -581,6 +565,7 @@ class DDOS_API
     #now find the connection in send connections
     @send_sem.lock
     connection = find_by_ip(id, @send_connects)
+    #data will be released after sending if the connection exists
 
     #if the connection does not exist yet, then create it
     if connection.nil? then
@@ -596,12 +581,13 @@ class DDOS_API
       connection = TCPSocket.new(ip, port)      
 
       #now add the connection back onto the list
-      @send_sem.lock
+      @rec_sem.lock
       @rec_connects[0] << connection
       @rec_connects[1] << ip
       @rec_connects[2] << port
       @rec_connects[3] << Time.now
       @rec_connects[4] << id
+      @rec_sem.unlock
     end
 
     #finally, send a simple alive command back
@@ -610,6 +596,19 @@ class DDOS_API
     ip, port = @rec_connects[1], @rec_connects[2]
     #release data
     @rec_sem.unlock
+  end
+  
+  #proc_alive: will process an incoming check_alive request and adjust accordingly
+  # the data structures to reflect the receipt of new input
+  def proc_alive(index, data)
+    #fixMe-> finish writing and switch some functionality to check_alive
+
+    #now either tell a remote server the status of the local server or update the
+    # status of a remote connection
+
+    alive = true if !@@kill && @alive
+    else alive = false
+
     
     
     
