@@ -280,7 +280,12 @@ class DDOS_API
 
           #fixMe-> add timeout, correct send_alive functionality, and @status_unsure
           # references
-          #if the server is dead, then perform additional logic
+          #mark the server for followup and send it a message to see if it is alive
+          send_alive(num)
+
+          #followup on servers with uncertain status and take appropriate action
+          check_status()
+
           if !check_alive(num) then
             #if the local server is a hot failover for this remote server, then
             # fail it over and inform its dependent servers
@@ -376,6 +381,9 @@ class DDOS_API
       end
     end
   end
+
+  #we are now done with threading functions so move onto other public methods
+  
 
   #send_data: this function will send proc_data to the given connection.
   # this is yet another overloaded version of the send_data method. This version will

@@ -1,0 +1,21 @@
+<p><header><h1><center>GIRST DDOS API</center></h1></p>
+
+<h4><center>Get It Right the Second Time</center></h4>
+
+<p><h3><center>Coded by Ben Jones</center></h3></header></p>
+
+<h4>Overview</h4>
+
+<ul>
+<li>This API is designed to failover services in the case of a Distributed Denial of Service Attack.</li>
+<li>The code and more information can be found in the Git Hub repository for the project <a href="https://github.com/benwritescode/first_spiral.git">here</a>.</li>
+</ul>
+
+<h4>Usage</h4>
+
+<ul>
+<li>The API is designed to be used to receive data on a single socket specified in the configuration and if more sockets are needed, the user will need to instantiate additional instances of the API</li>
+<li>The object that the service passes to the API must include a get_data(int id, string data) method to receive information from the web where id is a reference to the connection that sent the data.</li>
+<li>The object from the service must also implement the to_yaml method to convert itself into yaml </li>
+<li>More information and the interface to the API can be found in the file "DDOS API Interface.pdf"</li>
+</ul>
