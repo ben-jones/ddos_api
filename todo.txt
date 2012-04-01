@@ -44,7 +44,9 @@ done 8. add incoming ip and port info to accept_thread
 
 11. look into readers/ writers problem and come to a useful solution
 
-12. examine possibly doing 
+12. make sure using index and id consistently and appropriately
+
+13. remove any use of * proc_data and just a string to send
 
 II general layout/ function definitions
 
