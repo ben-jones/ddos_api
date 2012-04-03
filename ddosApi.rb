@@ -135,8 +135,9 @@ class DDOS_API
   end
 
   #config_api: will read in the ip address of the next server to failover to and
-  #store the socket in failover_connect
+  # store the socket in failover_connect
   #Note: this method should be called before using the rest of the API
+  #fixMe-> update for new API setup
   def config_api(failover_filename="failover.txt")
     #then read in the failover data from a file
     failover = File.open(failover_filename,"r")
@@ -149,7 +150,7 @@ class DDOS_API
       puts line
       line.chomp!
       #turn the input into integers and if it is a hostname, then just return the
-      #string
+      # string
       ip, port = line.split(" ") do |string|
         begin
           string.to_i
@@ -159,8 +160,8 @@ class DDOS_API
       end
 
       #if the last ip read was the ip and of this server, then select the next port
-      #and ip. If this is the end of the file, then rewind to the beginning and use
-      #the first connection listed in the text document
+      # and ip. If this is the end of the file, then rewind to the beginning and use
+      # the first connection listed in the text document
       if(ip == @local_ip) then
           line = failover.gets
           if(line == nil)pp then
@@ -198,10 +199,10 @@ class DDOS_API
   end
 
   #threading functions: this functions are infinite loops that will also determine
-  #when a failover is necessary
+  # when a failover is necessary
   
   #accept_thread: takes in the open TCPServer socket and accepts connections as they
-  #come in 
+  # come in 
   def accept_thread(server)
     #loop until the API is killed
     while !@@kill do
@@ -229,7 +230,7 @@ class DDOS_API
   # specific connections has not had any input in @fail_timeout seconds, then
   # failover that connection
   def input_thread
-    #fixMe-> add failover logic and failover_server function for monitored
+    #fixMe-> add failover logic and send_fail function for monitored
     # connections
     #loop until the API is killed- note using dc because I don't have any writes or
     # exception streams that I care about
@@ -362,9 +363,10 @@ class DDOS_API
           #acquire data lock
           @send_sem.lock
           send_index = find_by_ip(address, port, @send_connects)
+          send_id = @send_connects[4][send_index]
           #release the data
           @send_sem.unlock
-          failover_server(send_id, -1, send_id)
+          send_fail(send_id, -1, send_id)
 
           #and inform all its dependent servers
           @dependents[0].each_index do |dep_index|
@@ -372,8 +374,8 @@ class DDOS_API
             #either use an existing connection, or open a new one if the local
             # server is not communicating with it
             dep_index = find_by_ip(dep_ip, dep_port)
-            if dep_index.nil? then failover_server(send_index, -1, dep_ip, dep_port)
-            else failover_server(send_index, -1, dep_index)
+            if dep_index.nil? then send_fail(send_id, -1, dep_ip, dep_port)
+            else send_fail(send_id, -1, dep_index)
             end
           end
 
@@ -409,6 +411,7 @@ class DDOS_API
   end
   #this function just looks up the connection info via its connectionIndex and then
   # sends the data
+  #fixMe-> change proc_data to string, not array and change references elsewhere
   def send_data(connect_index, *proc_data)
     #if this server has been "killed", then don't send anything
     return nil if @kill
@@ -459,20 +462,11 @@ class DDOS_API
     when "back"
       receive_backup(data)
     when "fail"
-      fail_proc(index, data)
+      proc_fail(index, data)
     when "alive"
-      alive_proc(index, data)
+      proc_alive(index, data)
     else
       #otherwise, give the data to the service by handing it to the get_data method
-
-      #get the connection's id # 
-      #acquire data lock
-      @rec_sem.lock
-      id = @rec_connects[4][connect_index]
-      #release lock
-      @rec_sem.unlock
-
-      #and send the data
       @service_object.get_data(data, int connect_index)
     end
 
@@ -565,12 +559,59 @@ class DDOS_API
     @myDependencies
   end
 
-  #failover_server(source_serv, dest_serv, rec_serv): this function will 
-  # instruct the recepient server, rec_serv, to begin using dest_serv instead of 
-  # source_serv. 
-  #fixMe-> a dest_serv of -1 is a reference to self, use ids, not index
-  def failover_server(source_serv, dest_serv, rec_serv)
-   #fixMe-> finish writing
+  #send_fail(fail_from, fail_to, rec_serv): this function will instruct the 
+  # recepient server, dest_serv, to begin using fail_to instead of fail_to.
+  #fixMe-> a reference of -1 is a reference to self, use ids, not index
+  def send_fail(fail_from, fail_to, rec_serv)
+    #fixMe-> finish writing
+    #if fail_from is set to -1, then it is a reference to the local server and use
+    # that data
+    if(fail_from == -1) then
+      fail_from_ip, fail_from_port = @local_ip, @local_port      
+    else
+      #acquire data and find the data from the receiving connection
+      @rec_sem.lock
+      fail_from_index = find_by_id(fail_from, @rec_connects)
+      fail_from_ip = @rec_connects[1][fail_from_index]
+      fail_from_port = @rec_connects[2][fail_from_index]
+      @rec_sem.unlock
+    end
+    
+    #now find the data for the destination of the failover from fail_to and if it is
+    # set to -1, then use the local server's info
+    if(fail_to == -1) then
+      fail_to_ip, fail_to_port = @local_ip, @local_port      
+    else
+      #acquire data and find the data from the receiving connection
+      @rec_sem.lock
+      fail_to_index = find_by_id(fail_to, @rec_connects)
+      fail_to_ip = @rec_connects[1][fail_to_index]
+      fail_to_port = @rec_connects[2][fail_to_index]
+      @rec_sem.unlock
+    end
+    
+    #now find the connection to send the message to-> note that we are not checking
+    # the case that rec_serv is -1 because it would not make sense to send this to
+    # ourselves and any cases that require it would be better left to create a new
+    # function for the data manipulation
+    @send_sem.lock
+    dest_connect = find_by_id(dest_serv, @send_connects)
+    @send_sem.unlock
+   
+    #create the data to send
+    data_to_send = "fail #{fail_from_ip} #{fail_from_port} #{fail_to_ip} #{fail_to_port}"
+    #and send the data-> be sure to create a connection if a connection does not
+    # already exist
+    if dest_connect.nil? then
+      #find the ip and port to send the data to
+      @rec_sem.lock
+      index = find_by_id(dest_serv, @rec_connects)
+      ip, port = @rec_connects[1][index], @rec_connects[2][index]
+      @rec_sem.unlock
+      send_data(ip, port, data_to_send)
+    else
+      send_data(dest_connect, data_to_send)
+    end
   end
 
   #send_alive: will send a check alive message to a remote server to see if it is
@@ -678,8 +719,23 @@ class DDOS_API
 
   #proc_fail: will process an incoming failover request and determine what actions 
   # to take
-  #fixMe-> finish writing
+  #fixMe-> finish writing and consider best way to manage failover connections-> 
+  # should it be a separate array from @send_backups?-> yes-> implement changes
   def proc_fail(request)
+    #start by parsing the ip and port info from the data
+    fail_from_ip, fail_from_port, fail_to_ip, fail_to_port = request.split(" ")
+    
+    #if the fail_from ip and port are the same as the local server, then initiate a
+    # failover all request
+    if(fail_from_ip == @local_ip && fail_from_port == @local_port)
+      failover_all
+    #if the fail_from ip is a different address, then find the ip for fail_from and
+    # change all its references to fail_to, then adjust the @send_backups list
+    else
+      
+    end
+
+
   end
 
   #kill: if the API needs to be killed, this method keeps the API from continuously
