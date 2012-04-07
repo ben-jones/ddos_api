@@ -15,7 +15,6 @@
 =end
 
 #I will need to methods from net/http and socket
-require 'net/http'
 require 'socket'
 
 class DDOS_API  
@@ -38,8 +37,6 @@ class DDOS_API
   # source port, the 3rd element is the last time data was received, the 4th 
   # element is the connection id, and th 5th element is whether the 
   # connection is dead or alive
-  #fixMe-> search and replace for references to time stamp-> changed from 1st to 3rd
-  # element
   #conn_sem is a mutex to provide mutual exclusion
   @connects
 
@@ -302,7 +299,7 @@ class DDOS_API
           #reset the overall timestamp if data was received
           overall_timestamp =  Time.now
           #and the timestamp for just this connection
-          @connects[4][index] = Time.now
+          @connects[3][index] = Time.now
           #if this connection was marked as dead, now mark it as alive
           @connects[5][index] = true
 
@@ -315,7 +312,7 @@ class DDOS_API
           # check if the server is alive. If not, then send it a message and
           # mark it for followup
           #Note that input_array[5] is true if the connection is alive
-          if input_array[5][index] || input_array[3][index] < (Time.now - @fail_timeout) then
+          if input_array[5][index] && input_array[3][index] < (Time.now - @fail_timeout) then
             #send a message to the server to check its status
             send_alive(index)
           end
@@ -349,13 +346,21 @@ class DDOS_API
       @send_back_sem.lock
       @send_backups[0].each_index do |index|
         #if the backup is older than @force_backup seconds, then force a backup
-        backups_to_force << index if @send_backups[1][index] < (Time.now - @force_backup)
+        backups_to_force << index if @send_backups[3][index] < (Time.now - @force_backup)
       end
       #release lock on send_backups
       @send_back_sem.unlock
       #force a backup for those that are too old
       data = @service_object.to_yaml
       backups_to_force.each do |backup|
+        #acquire data
+        @send_back_sem.lock
+        #get the id and update the time stamp
+        id = @send_backups[4][backup]
+        @send_backups[3][backup] = Time.now
+        #release data
+        @send_back_sem.unlock
+
         send_backup(backup, data)
       end
     end
@@ -553,9 +558,9 @@ class DDOS_API
     
     #if this backup is newer, then use it
     @rec_back_sem.lock
-    if(@rec_backups[connect_index][0] < time) then
-      @rec_backups[connect_index][0] = time
-      @rec_backups[connect_index][1] = backup_data
+    if(@rec_backups[connect_index][3] < time) then
+      @rec_backups[connect_index][3] = time
+      @rec_backups[connect_index][0] = backup_data
       @rec_back_sem.unlock
       return 1
     else
@@ -566,19 +571,40 @@ class DDOS_API
     return 2
   end
 
-  #self_fail: this function will fail the local server over after it has been 
+  #self_fail(nil): this function will fail the local server over after it has been 
   # DDOSed. In a realistic scenario, this function would not be able to do anything
   #fixMe-> finish writing
   def self_fail
-    #send failover_server notice to all
-    @myDependencies
+    #tell the failover server that it will be receiving data
+    #acquire data lock
+    @conn_sem.lock
+    send_index = find_by_ip(@failover_connects[1], @failover_connects[2], @connects)
+    send_id = @connects[4][send_index]
+    #release the data
+    @conn_sem.unlock
+    send_fail(-1, send_id, send_id)
+    
+    #and inform all our dependent servers
+    @dep_sem.lock
+    @dependents[0].each_index do |dep_index|
+      dep_ip, dep_port = @dependents[1][dep_index], @dependents[2][dep_index]
+
+      #either use an existing connection, or open a new one if the local
+      # server is not communicating with it
+      dep_index = find_by_ip(dep_ip, dep_port)
+      dep_index = create_connect(dep_ip, dep_port) if dep_index.nil? then 
+      send_fail(-1, send_id, dep_index)
+    end
+    @dep_sem.unlock
+
+    #now set our status to dead
+    @alive = false
   end
 
   #send_fail(fail_from, fail_to, rec_serv): this function will instruct the 
   # recepient server, dest_serv, to begin using fail_to instead of fail_to.
-  #fixMe-> a reference of -1 is a reference to self, use ids, not index
+  #Note: a reference of -1 is a reference to self, use ids, not index
   def send_fail(fail_from, fail_to, rec_serv)
-    #fixMe-> finish writing
     #if fail_from is set to -1, then it is a reference to the local server and use
     # that data
     if(fail_from == -1) then
@@ -632,9 +658,9 @@ class DDOS_API
   #proc_fail(int index, string request): will process an incoming failover request 
   # and determine what actions to take. Note that the API and this function do not
   # care if we are relient upon this server-> if a server that we are dependent upon
-  # is being failed over, then we will adjust
-  #fixMe-> finish writing and consider best way to manage failover connections-> 
-  # should it be a separate array from @send_backups?-> yes-> implement changes
+  # is being failed over, then we will adjust. 
+  # This method will return 1 if it was successful in removing the connection and
+  # return 0 if the connection did not exist or there was an error
   def proc_fail(request)
     #start by parsing the ip and port info from the data
     fail_from_ip, fail_from_port, fail_to_ip, fail_to_port = request.split(" ")
@@ -646,17 +672,17 @@ class DDOS_API
     index = find_by_ip(fail_from_ip, fail_from_port, @dead_connects)
     @dead_sem.unlock
     #return if the index is not nil, aka it was in dead connects
-    return if !index.nil?
+    return 0 if !index.nil?
     
     #now check connects
     @conn_sem.lock
     index = find_by_ip(fail_from_ip, fail_from_port, @connects)
     @conn_sem.unlock
     #if the index is nil, aka the connection is not in connects, then return
-    return if index.nil?
+    return 0 if index.nil?
 
-    #now find out if we are sending backups to the server, aka are the servers hot
-    # failovers for each other so that we can use this data later
+    #now find out if we are sending backups to the server, aka are the server's hot
+    # failover for each other so that we can use this data later
     @back_sem.lock
     back_index = find_by_ip(fail_from_ip, fail_from_port, @send_backups)
     @back_sem.unlock
@@ -665,52 +691,81 @@ class DDOS_API
     # self_fail because the local server has been ddosed
     if(fail_from_ip == @local_ip && fail_from_port == @local_port)
       self_fail
+
     #if the fail_to ip and port are the same as the local server, then notify all
     # dependents because the local server is taking over-> I am assuming that this
     # is only called when the local server is actually set up as a hot failover for
     # the server
     elsif !back_index.nil?
-      #start with the receive connections and delete everything
+      #close and delete the connection, but save the id
       @conn_sem.lock
+      id = @connects[4][index]
       @connects[0][index].close
-      @connects[0].delete_at(index)
-      @connects[0].delete_at(index)
-      @connects[0].delete_at(index)
-      @connects[0].delete_at(index)
-      @connects[0].delete_at(index)
+      delete_elem(index, @connects)
       @conn_sem.unlock
       
-      #now deal with the appropriate backup connection and add the connection to
+      #now delete the appropriate backup connection and add the connection to
       # the dead connection list
       @send_back_sem.lock
-      @sn
+      @send_backups[0][back_index].close
+      delete_elem(back_index, @send_backups)
+      @send_back_sem.unlock
 
-
-      #note that we don't care if we are dependent upon the server-> the action
-      # looks the same as with any other server
       #if the local server is specified as the server to failover to, then add the
       # fail_from server to the dead connects list
       @dead_sem.lock;
-      
-    #if the fail_from ip is a different address, then use additional logic to 
-    # determine if it is a monitored(think @send_backups) connections
+      dead_index = @dead_connects.length
+      @dead_connects[0][dead_index] = nil 
+      @dead_connects[1][dead_index] = fail_from_ip
+      @dead_connects[2][dead_index] = fail_from_port 
+      @dead_connects[3][dead_index] = Time.now
+      @dead_connects[4][dead_index] = id
+      @dead_connects[5][dead_index] = false
+    
+    #if this server is not a hot failover, then close the old connection
+    # and copy the new connection info into the old slot. Also, if there is an open
+    # connection, then replace all entries in check_status and connects with the id
+    # of the failed process-> basically, assuming that server will only send data or
+    # be a backup, not both because the old id will be erased. I will make this
+    # better in future implementations
     else
-      #first check if the connection is an alternate
+      #close the old connection, but store the value of the id and update the server
+      # referenced by fail_to with this new id-> will update status_unsure and 
+      # receive backups along with connects, so I will have to acquire the locks 
+      # here to be sure that all data is up to date when the lists are accessed
+      
+      #now close the connection and delete its data
+      mark_dead(@fail_from_ip, @fail_from_port)
 
+      @status_sem.lock
+      @rec_back_sem.lock
+      @conn_sem.lock
+      #close and delete the old connection, but save the id
+      new_id = @connects[4][index]
+      new_index = find_by_ip(@fail_from_ip, @fail_from_port, @connects)
+      @connects[4][new_index] = new_id
 
+      #update the id of the failover connection in connects
+      new_index = find_by_ip(@fail_from_ip, @fail_from_port, @connects)
+      @connects[4][new_index] = new_id
+      @conn_sem.unlock
+     
+      #update the rec_backups
+      new_index = find_by_ip(@fail_from_ip, @fail_from_port, @rec_backups)
+      @rec_backups[4][new_index] = new_id
+      @rec_back_sem.unlock
+
+      #update the status_unsure list
+      new_index = find_by_ip(@fail_from_ip, @fail_from_port, @status_unsure)
+      @status_unsure[4][new_index] = new_id
+      @status_sem.unlock
     end
-
-
   end
 
 
   #send_alive: will send a check alive message to a remote server to see if it is
   # still alive
   def send_alive(index)
-    #fixMe-> finish writing and add functionality to check timestamps for other
-    # connections with the same id
-    #fixMe-> add functionality to add to the status_unsure list
-
     #get the id for the given index
     #acquire data
     @conn_sem.lock
@@ -744,11 +799,12 @@ class DDOS_API
   #proc_alive: will process an incoming check_alive request and adjust accordingly
   # the data structures to reflect the receipt of new input
   def proc_alive(id, data)
-    #fixMe-> finish writing and switch some functionality to check_alive
-
     #set the value of alive 
-    alive = true if !@@kill && @alive
-    else alive = false
+    if !@@kill && @alive then
+      alive = true
+    else then
+      alive = false
+    end
 
     #split the data into a selector, hostname, and port based on a space 
     selector, ip, port, rest = data.split(" ")
@@ -782,24 +838,17 @@ class DDOS_API
       end
       @conn_sem.unlock
 
-      #now move onto @status_unsure
+      #now move onto removing connections from @status_unsure
       @status_sem.lock
       for @status_unsure.each_index do |index|
         #if the id is the same, then remove it from @status_unsure
-        if @status_unsure[4] == id then
-          @status_unsure[0].delete_at(index)
-          @status_unsure[1].delete_at(index)
-          @status_unsure[2].delete_at(index)
-          @status_unsure[3].delete_at(index)
-          @status_unsure[4].delete_at(index)
-          @status_unsure[5].delete_at(index)
-        end
+        delete_elem(index, @status_unsure) if @status_unsure[4][index] == id
       end
+      @status_sem.unlock
     #print an error when there is an unexpected case
     else
       puts "\nError in proc_alive: Invalid processing option\n"
     end
-    @status_sem.unlock
   end
 
   #kill: if the API needs to be killed, this method keeps the API from continuously
@@ -815,56 +864,109 @@ class DDOS_API
 
   #helper functions that must be private
   private
+  
+  #create_connect(string address, int port): this function will create a new
+  # connection on the @connects list and return its index
+  #Note: this function acquires a lock on the conn_sem and id_sem mutexes and this 
+  # must be factored into the order in which you acquire locks
+  def create_connect(address, port, id)
+    @id_sem.lock
+    @conn_sem.lock
+    index = @connects.length
+    @connects[0][index] = Socket.new(address, port)
+    @connects[1][index] = address
+    @connects[2][index] = port
+    @connects[3][index] = Time.now
+    @maxId = @maxId + 1
+    @connects[4][index] = @maxId
+    @connects[5][index] = true
+  end
 
-  #mark_dead(int id): will mark all connections with the given id as dead and close
-  # the connections. Though this implementation won't use it, I am also adding the
-  # connection info to a list of dead connections. 
-  #Note: this method is designed to be called for connections that are already on the
-  # @status_unsure list
-  #fixMe-> finish writing and deal with dependent servers
-  def mark_dead(id)
-    #start by getting the connection's info from status unsure or connects
-    @status_sem.lock
-    index = find_by_id(id, @status_unsure)
-    ip, port = @status_unsure[1][index], @status_unsure[2][index]
-    @status_sem.unlock
+  #mark_dead(string ip, int port): will mark all connections with the given 
+  # id as dead and close the connections. Though this implementation won't use it, 
+  # I am also adding the connection info to a list of dead connections. 
+  #Note: this method will delete connections on the @connects, @dependents,
+  # @status_unsure, and @send_backups
+  #fixMe-> finish writing and deal with dependent servers-> concurrently lock all
+  # the lists or just dont care that they will not all be synchronized? Is
+  # synchronization worth the performance increase
+  def mark_dead(ip, port)
+    #start by getting the connection's info from @connects
+    @conn_sem.lock
+    index = find_by_id(id, @connects)
+    ip, port = @connects[1][index], @connects[2][index]
+    @conn_sem.unlock
 
-    #add the connection to the @dead_connects list using the standard notation even
-    # though the 0th element in dead_connects will be nil because there is not an
-    # associated connection
+    #get and delete all connections with the given ip
+    @conn_sem.lock
+    connects = find_all_by_ip(ip, port, @connects)
+    #now close and delete each connection in the @connects list
+    for connects.each_index do |index|
+      #close the connection
+      @connects[0][index].close
+      #and delete it
+      delete_elem(index, @connects)
+    end
+    @conn_sem.unlock
+
+    #now do the same list of connections dependent upon us
+    @dep_sem.lock
+    connects = find_all_by_ip(ip, port, @dependents)
+    #now delete and close each connection
+    for connects.each_index do |index|
+      #delete all the data
+      delete_elem(index, @dependents)
+    end
+    @dep_sem.unlock
+
+    #delete the connection data from the send and receive backups list
+    # if the list is on the send backups list, and is therefore a failover, then
+    # add it to the dead connects list
     @dead_sem.lock
-    @dead_connects[1][index] << ip
-    @dead_connects[2][index] << port
-    @dead_connects[3][index] << Time.now
-    @dead_connects[0][index] << id
+    @send_back_sem.lock
+    indices = find_all_by_ip(ip, port, @send_backups)
+    for indices.each do |index|
+      #remove the backup
+      delete_elem(index, @send_backups)
+    end
+    @send_back_sem.unlock
+    #if the connection was on the @send_backups list, then add it to the dead list
+    # because it is one of our failovers
+    if !indices.empty? then
+      #add the connection to the @dead_connects list using the standard notation even
+      # though the 0th element in dead_connects will be nil because there is not an
+      # associated connection
+      dead_index = @dead_connects.length 
+      @dead_connects[0][dead_index] = nil
+      @dead_connects[1][dead_index] = ip
+      @dead_connects[2][dead_index] = port
+      @dead_connects[3][dead_index] = Time.now
+      @dead_connects[4][dead_index] = id
+      @dead_connects[5][dead_index] = false
+    end
     @dead_sem.unlock
 
-    #get and mark as dead all receiving connections with the given id
-    @conn_sem.lock
-    connects = find_all_by_id(id)
-    #now mark each connection as dead and close it
-    for connects.each_index do |index|
-      #close the connection
-      connects[0][index].close
-      #set status field to dead
-      connects[5][index] = false
-      #I am leaving the ip, port, and time stamp fields unchanged
+    #find connections to remove on @status_unsure
+    @status_sem.lock
+    indices = find_all_by_ip(ip, port, @status_unsure)
+    for indices.each do |index|
+      delete_elem(index, @status_unsure)
     end
-    @conn_sem.unlock
-
-    #now do the same for the sending connections
-    @conn_sem.lock
-    connects = find_all_by_id(id)
-    #now mark each connection as dead and close it
-    for connects.each_index do |index|
-      #close the connection
-      connects[0][index].close
-      #set status field to dead
-      connects[5][index] = false
-      #I am leaving the ip, port, and time stamp fields unchanged
-    end
-    @conn_sem.unlock
   end
+  
+  #delete_elem(int index, reference * list): will delete the connection with the
+  # given index on the list. This function will not close the connection however.
+  # Will return 0 for failure, 1 for success.
+  def delete_elem(index, list)
+      #delete all the data
+      list[0].delete_at(index)
+      list[1].delete_at(index)
+      list[2].delete_at(index)
+      list[3].delete_at(index)
+      list[4].delete_at(index)
+      list[5].delete_at(index)
+  end
+
 
   #change_serv: will close the connection to source_serv and replace its entries in
   # connects with dest_serv. If there is not an open connection
@@ -883,6 +985,17 @@ class DDOS_API
     #if the address hasn't been found, return nil
     return nil
   end
+
+  #find_all_by_ip(string address, int port, reference * list): will find all 
+  # connections that match the given address and port and return their indices in an
+  # array.
+  def find_all_by_ip(address, port, list)
+    index_array = []
+    for list.each_index do |index|
+      index_array << index if ip == list[1][index] && port == list[2][index]
+    end
+  end
+
 
   #find_by_id: will find the connection to the socket given by address and port in
   # the connection list given by list. If it is not found, the method will return nil
@@ -919,6 +1032,9 @@ class DDOS_API
     return id
   end
 end
+
+
+
 
 class Connection
   attr_accessor :id, :cur_connect, :failovers, :backups
