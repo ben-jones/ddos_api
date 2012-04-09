@@ -1,6 +1,3 @@
-5. rewrite threads for better multithreading-> eg yields, not busy wait
-   a. initialize threads in config_api
-
 9. actually get failover working
    Options
 	a. have failover for each connection-> if failover for that connection, then
@@ -32,6 +29,21 @@
 	B. service object is unaware of changes-> hand it old ip, index, or id
 	   -> this seems better, but how to implement and how do I differentiate from
 	   old data
+
+16. change the names so that we check failover_to for the connections to failover
+    to, aka those connections that are monitoring us, and failover_from as a list of
+    connections to monitor
+    	A. fail_to
+	   1. change name of failover_connects and set to check this list. If on list
+	      and the status is changing to failed, then accept the failover
+	B. fail_rec-> 
+	   1. change name of send_backups and send_back_sem
+	   2. change backup_thread to only check these connections if fail_back_mode
+	      is set to false-> we are sending the data
+	C. fail_back_mode-> true if we are a backup, false if we are not a backup
+
+
+
 II general layout/ function definitions
 
 new(int failover_timeout, int or string local_ip, local_port, fail_object):
