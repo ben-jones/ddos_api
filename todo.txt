@@ -42,6 +42,7 @@
 	      is set to false-> we are sending the data
 	C. fail_back_mode-> true if we are a backup, false if we are not a backup
 
+17. should I add an acknowledge method?
 
 
 II general layout/ function definitions
