@@ -1,5 +1,5 @@
-<header><h1><center>GIRST DDOS API</center></h1>
-<h4><center>Get It Right the Second Time</center></h4>
+<header><h1><center>DOSR DDOS API</center></h1>
+<h4><center>Denial Of Service Recovery</center></h4>
 <h3><center>Coded by Ben Jones</center></h3></header>
 
 
