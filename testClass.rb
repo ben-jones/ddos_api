@@ -68,11 +68,9 @@ class TestClass
   def compute
     #compute the next number in the Lucas and Fibonnaci sequence
     @sem.lock
-    for run in 1..loops do
-      @fibs[@max+1] = @fibs[@max] + @fibs[@max -1]
-      @lucs[@max+1] = @lucs[@max] + @lucs[@max -1]
-      @max += 1
-    end
+    @fibs[@max+1] = @fibs[@max] + @fibs[@max -1]
+    @lucs[@max+1] = @lucs[@max] + @lucs[@max -1]
+    @max += 1
     @sem.unlock
   end
 

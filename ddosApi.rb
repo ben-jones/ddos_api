@@ -17,14 +17,14 @@
 =end
 
 #I will need to methods from net/http and socket
-require 'socket.rb'
-require 'thread.rb'
-require 'monitor.rb'
-
+require 'socket'
+require 'thread'
+require "#{Dir.pwd}/debugMod"
 
 #Code for the DOSR API(Denial Of Service Recovery)
 class DDOS_API  
-
+  
+  include Debug
 
   #methods for testing-> lets me get and set variables
   def status_unsure=(array)
@@ -175,7 +175,7 @@ class DDOS_API
     if defined?(@@kill).nil? or !@@kill then
       @@kill = false
     end
-
+=begin
     #set up the mutexes to provide mutual exclusion
     @conn_sem = Monitor.new
     @conn_cv = ConditionVariable.new
@@ -189,7 +189,7 @@ class DDOS_API
     @ip_sem = Monitor.new
     @dep_sem = Monitor.new
     @dead_sem  = Monitor.new
-
+=end
 
     #set up the tables and maxId for conversion between ids and ips
     @to_id_table = {"self" => -1}
@@ -588,7 +588,6 @@ class DDOS_API
   # if input is an integer, meaning that it is an id or else I will assume it is an
   # ip address and will create a new socket for the ip and port
   def send_data(input, *proc_data)
-    id, data, connect_index
     #if input is an integer, then use it as an id, otherwise it is an ip address
     if input.is_a? Integer then
       id = input
@@ -744,7 +743,7 @@ class DDOS_API
       return 1
     #if the backup connnection does exist and this backup is newer, then use it
     elsif(@rec_backups[3][index] < time) then
-      @rec_backups[3][index = time
+      @rec_backups[3][index] = time
       @rec_backups[0][index] = backup_data
       # @rec_back_sem.unlock
       return 1
@@ -1274,16 +1273,3 @@ class DDOS_API
   end
 end
 
-#Module Debug: this module includes a bunch of printing statements and status methods
-# that will allow the user to see much more clearly what is happening in the function
-module Debug
-
-  #include a bunch of getter and setter methods to make life easier
-
-
-  #here are some status methods -> will return the status of this instance of the API
-  def still_alive
-    if @@kill == false
-    end
-  end
-end

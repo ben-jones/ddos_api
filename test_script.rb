@@ -7,8 +7,8 @@
 =end
 
 #add in the code for the API and test class
-require 'ddosApi.rb'
-require 'testClass.rb'
+require "#{Dir.pwd}/ddosApi.rb"
+require "#{Dir.pwd}/testClass.rb"
 
 #send the user info about whats happening
 puts "\nWelcome to the Test Script for the DOSR(Denial Of Service Recovery) API\n"
@@ -45,9 +45,9 @@ when 1
   timeout = gets.to_i
   
   #create an instance of the API and the service object
-  api = DDOS_API.new(timeout, ip, port)
+  api = DDOS_API.new(timeout, local_ip, local_port)
   service = TestClass.new(api)
-  api.set_service_object(service)
+  api.set_service_object = service
 
 
   #Part A: have servers send data back and forth at a rate that the user specifies
@@ -94,7 +94,7 @@ when 1
     puts "Remote address: #{remote_ip} remote port: #{remote_port}\n" 
     puts "Interval(in seconds): #{interval}\n"
     puts "Timeout(in seconds): #{timeout}\n"
-    raise
+    raise "Test 1 A Fail"
   end
 
   #now move onto Test 1 Part B: a basic test of the proc_alive and send_alive 
@@ -104,8 +104,36 @@ when 1
   puts "After timeout seconds, the servers should start exchanging messages\n"
   puts "querying the other server's status. The same settings will be used\n"
   puts "from part A.\n"
-
+  for run in 1..500 do
+    
+    #if the local server or the remote server is dead, then issue an error message
+    if !still_alive or !check_connect_alive(remote_ip, remote_port) then
+      puts "Test 1 Part B failed on run: #{run} "
+      puts "This was a basic test of send_alive and proc_alive methods\n"
+      puts "This means that the servers were unable to successfully communicate\n"
+      puts "their statuses to one another in the time given\n"
+      puts "The test parameters were: \n"
+      puts "Local address: #{local_ip} local port: #{local_port}\n" 
+      puts "Remote address: #{remote_ip} remote port: #{remote_port}\n" 
+      puts "Interval(in seconds): #{interval}\n"
+      puts "Timeout(in seconds): #{timeout}\n"
+      raise "Test 1 B Fail"
+    end
+  end
   
+  puts "Test 1 Part B has completed successfully."
+  puts "This was a basic test of send_alive and proc_alive methods\n"
+  puts "This means that the servers were able to successfully communicate\n"
+  puts "their statuses to one another in the time given\n"
+  puts "The test parameters were: \n"
+  puts "Local address: #{local_ip} local port: #{local_port}\n" 
+  puts "Remote address: #{remote_ip} remote port: #{remote_port}\n" 
+  puts "Interval(in seconds): #{interval}\n"
+  puts "Timeout(in seconds): #{timeout}\n"
+
+else
+  puts "Invalid testing option\n"
+end
 
 
 
