@@ -9,6 +9,7 @@
 #add in the code for the API and test class
 require "#{Dir.pwd}/ddosApi.rb"
 require "#{Dir.pwd}/testClass.rb"
+require 'ruby-debug' ; Debugger.start(:post_mortem => true)
 
 #send the user info about whats happening
 puts "\nWelcome to the Test Script for the DOSR(Denial Of Service Recovery) API\n"
@@ -50,6 +51,7 @@ when 1
   api.set_service_object = service
 
 
+  
   #Part A: have servers send data back and forth at a rate that the user specifies
   # try to run this for 500 iterations
   puts "Starting Test 1 Part A: basic test of ability to send and receive data\n"
@@ -58,8 +60,7 @@ when 1
     service.compute
     service.compute
     #wait for the interval amount of seconds
-    sleep interval
-   
+
     #send the latest elements in the sequence to the other server
     #Note: I could send data from inside the TestClass instance by calling methods
     # on the reference to the same api instance

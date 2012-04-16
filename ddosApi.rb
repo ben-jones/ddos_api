@@ -19,12 +19,10 @@
 #I will need to methods from net/http and socket
 require 'socket'
 require 'thread'
-require "#{Dir.pwd}/debugMod"
 
 #Code for the DOSR API(Denial Of Service Recovery)
 class DDOS_API  
-  
-  include Debug
+
 
   #methods for testing-> lets me get and set variables
   def status_unsure=(array)
@@ -372,8 +370,8 @@ class DDOS_API
       
       #get a lock on @connects, then add stuff onto it
      # @conn_sem.lock
-      index = @connects.length
-
+      index = @connects[0].length
+      puts "just accepted #{ip} #{port} and put at index #{index}"
       #append the connection's information onto the end of @connects
       @connects[0][index] = new_connect
       @connects[1][index] =  ip
@@ -388,8 +386,8 @@ class DDOS_API
   end
 
   #input_thread: checks to be sure that input is still coming in. If there has
-  # been no input in @fail_timeout seconds, then initiate a failover. If a
-  # specific connections has not had any input in @fail_timeout seconds, then
+  # been no input in @failover_timeout seconds, then initiate a failover. If a
+  # specific connections has not had any input in @failover_timeout seconds, then
   # failover that connection
   def input_thread
     #fixMe-> add failover logic and send_fail function for monitored
@@ -399,7 +397,6 @@ class DDOS_API
 
     #set up a timestamp to tell if we have been DDOSed
     overall_timestamp =  Time.now
-
     #loop until the API is killed- note using dc because I don't have any writes or
     # exception streams that I care about
     while !@@kill do
@@ -410,9 +407,9 @@ class DDOS_API
       # comparatively long time and such a long data access will reduce concurrency
 
       #now get the length of the connection array
-     # @conn_sem.lock
-      length = @connects.length
-     #  @conn_sem.unlock
+      # @conn_sem.lock
+      length = @connects[0].length
+      #  @conn_sem.unlock
       #now let someone else use the connections
       
       #now loop through every connection in the connection array and see if there
@@ -425,10 +422,17 @@ class DDOS_API
       #  @conn_sem.lock
         
         #see if there is any input waiting and if so, then send it to receive_data
-        input, dc, dc = select(@connects[0][index],[],[], 0)
+        input_arr, dc, dc = select([@connects[0][index]],[],[], 0)
         
+        #this test is necessary to provide helpful data to the rest of my code
+        if input_arr.nil?
+          input = nil
+        else
+          input = input_arr[0]
+        end
         #call receive_data if there is data waiting
         if !input.nil? then
+          puts "we got stuff!!"
           #reset the overall timestamp if data was received
           overall_timestamp =  Time.now
           #and the timestamp for just this connection
@@ -439,29 +443,29 @@ class DDOS_API
           #now receive the data and leave the connections unlocked until the next
           # loop
         #  @conn_sem.unlock
-          receive_data(index)
+          self.receive_data(index)
         else
           #if a server has not sent anything in failover timeout seconds, then
           # check if the server is alive. If not, then send it a message and
           # mark it for followup
           #Note that input_array[5] is true if the connection is alive
-          if input_array[5][index] && input_array[3][index] < (Time.now - @fail_timeout) then
+          if @connects[5][index] && @connects[3][index] < (Time.now - @failover_timeout) then
             #send a message to the server to check its status
-            send_alive(index)
+            self.send_alive(index)
           end
           #release the data to increase concurrency
         #  @conn_sem.unlock
         end
       end
-        
+      
       #now that we have gotten all the waiting input, see if any failover actions
       # need to be taken and check up on those connections on the status_unsure list
-      check_status()
+      self.check_status()
 
-      #if there has not been any input in @fail_timeout seconds, then assume that 
+      #if there has not been any input in @failover_timeout seconds, then assume that 
       # the local server was DDOSed
      # @conn_sem.unlock
-      self.self_fail if (Time.now - overall_timestamp) > @fail_timeout
+      self.self_fail if (Time.now - overall_timestamp) > @failover_timeout
     end
   end
     
@@ -509,7 +513,9 @@ class DDOS_API
   # and proc_alive
   #fixMe-> refactor to provide more concurrency
   #fixMe-> refactor to contain failover_logic
+  #fixMe-> for some tests I am stubbing out all the code
   def check_status()
+=begin
     #loop through every element in the status unsure array
    # @status_sem.lock
     length = @status_unsure[0].length
@@ -579,6 +585,8 @@ class DDOS_API
      # @status_sem.unlock
 
     end
+=end
+    return true
   end
 
   #send_data(int input, *proc_data): this function will send proc_data to the given 
@@ -592,7 +600,7 @@ class DDOS_API
     if input.is_a? Integer then
       id = input
       data = proc_data
-      connect_index = find_index_by_id(id)
+      connect_index = find_index_by_id(id, @connects)
     #create a new connection using the first input as an ip address and the second
     # input as a port number. The rest is still data to send
     else
@@ -607,8 +615,10 @@ class DDOS_API
     #now just send the data with a terminating character
     #acquire data lock
     # @conn_sem.lock
-    @connects[connect_index].puts proc_data
-    @connects[connect_index].puts "|::|"
+    puts proc_data
+    puts connect_index
+    @connects[0][connect_index].puts proc_data
+    @connects[0][connect_index].puts "|::|"
     #release lock
     # @conn_sem.unlock
 
@@ -628,6 +638,8 @@ class DDOS_API
    # @conn_sem.lock
     meth_sel =  @connects[0][index].read(5)
     data = @connects[0][index].gets("|::|")
+
+    puts "\nReceived on index #{index} #{meth_sel} #{data}"
     #release lock
    # @conn_sem.unlock
     #remove white space from meth_sel and the data seperator, |::|, from the data
@@ -646,6 +658,7 @@ class DDOS_API
       proc_alive(index, data)
     else
       #otherwise, give the data to the service by handing it to the get_data method
+      rec_data = meth_sel << data
       @service_object.get_data(data, index)
     end
 
@@ -1099,8 +1112,8 @@ class DDOS_API
   def create_connect(address, port)
    # @id_sem.lock
    # @conn_sem.lock
-    index = @connects.length
-    @connects[0][index] = Socket.new(address, port)
+    index = @connects[0].length
+    @connects[0][index] = TCPSocket.new(address, port)
     @connects[1][index] = address
     @connects[2][index] = port
     @connects[3][index] = Time.now
@@ -1271,5 +1284,17 @@ class DDOS_API
     #and return it
     return id
   end
+
+
+  #heres a few debugging functions
+  def still_alive
+    if @@kill == false and @alive == true then
+      return true
+    else
+      return false
+    end
+  end    
+ public :still_alive
+
 end
 

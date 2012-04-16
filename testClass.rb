@@ -45,7 +45,10 @@ class TestClass
   # from the given id. In this objects case, it will just compare that info with
   # the info computed from this server and either set the element for this index
   # to true for valid or false for invalid
-  def get_data(fib_index, fib, luc_index, luc, id)
+  def get_data(data, id)
+    fib_index, fib, luc_index, luc = YAML.load(data)
+    puts "reveived data: #{data}\n"
+    puts "and vars: #{fib_index} #{fib} #{luc_index}, #{luc}\n"
     @sem.lock
     if(@fibs[fib_index].nil? or @fibs[fib_index] == fib) and (@lucs[luc_index].nil? or @lucs[luc_index] == luc) then 
       @valid[id] = true
@@ -54,9 +57,9 @@ class TestClass
     end
   end
 
-  #rec_fail(*backup): will use backup as an array of variables and values that this
+  #load_fail(*backup): will use backup as an array of variables and values that this
   # object will use to pick the computation back up from where it left off
-  def rec_fail(data)
+  def load_fail(data)
     sem.lock
     @fibs = data[0]
     @lucs = data[1]

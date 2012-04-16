@@ -1,0 +1,3 @@
+#! /bin/bash
+ruby test_script.rb <test1AinputB.txt
+ruby test_script.rb <test1Ainput.txt
