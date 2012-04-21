@@ -17,10 +17,13 @@ class TestClass
 
   #valid: this array will store a true or false value for each id that has been seen
   # so far
+  #count: this variable will store the number of valid communications received
+  @valid
+  @count
 
   #semaphore to lock access to sequence of numbers
   @sem
-
+  
   #ddos_api: reference to the ddos api instance for this class
   @ddos_api
 
@@ -30,6 +33,8 @@ class TestClass
     @max = 1
     @fibs = [0, 1]
     @lucs = [2, 1]
+    @valid = []
+    @count = 0
     @sem = Mutex.new
   end
 
@@ -46,25 +51,29 @@ class TestClass
   # the info computed from this server and either set the element for this index
   # to true for valid or false for invalid
   def get_data(data, id)
-    fib_index, fib, luc_index, luc = YAML.load(data)
-    puts "reveived data: #{data}\n"
-    puts "and vars: #{fib_index} #{fib} #{luc_index}, #{luc}\n"
+    index, fib, luc = YAML.load(data)
+    @count += 1
+#    puts "On id #{id} reveived data: #{data}\n"
+#   puts "and vars: index: #{index} fib: #{fib} luc: #{luc}\n"
     @sem.lock
-    if(@fibs[fib_index].nil? or @fibs[fib_index] == fib) and (@lucs[luc_index].nil? or @lucs[luc_index] == luc) then 
+    if((@fibs[index].nil? or @fibs[index] == fib) and (@lucs[index].nil? or @lucs[index] == luc)) then 
       @valid[id] = true
+      puts "valid data received in service. This is the (#{@count})th receipt\n"
     else 
       @valid[id] = false
+      puts "invalid data received in service. This is the(#{@count})th receipt\n"
     end
+    @sem.unlock
   end
 
   #load_fail(*backup): will use backup as an array of variables and values that this
   # object will use to pick the computation back up from where it left off
   def load_fail(data)
-    sem.lock
+    @sem.lock
     @fibs = data[0]
     @lucs = data[1]
     @max = data[2]
-    sem.unlock
+    @sem.unlock
   end
 
   #compute(nil): compute the next number in the Lucas and Fibonacci sequences
@@ -74,6 +83,7 @@ class TestClass
     @fibs[@max+1] = @fibs[@max] + @fibs[@max -1]
     @lucs[@max+1] = @lucs[@max] + @lucs[@max -1]
     @max += 1
+#    sleep 0.4
     @sem.unlock
   end
 
