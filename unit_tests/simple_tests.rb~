@@ -1,0 +1,59 @@
+#simple_tests.rb
+#Ben Jones
+#Summer 2012
+#simple_tests.rb: this file contains some basic unit tests. These tests are 
+# simple in that they do not need networking support and primarily verify
+# helper functions like create_connect
+require 'test/unit'
+require_relative "../ddosApi.rb"
+require 'socket'
+
+class SimpleTests < Test::Unit::TestCase
+
+  #I have to get a little complicated with the port numbers so that I do not
+  # get an address in use error. 
+  attr_accessor :server_is_set_up, :port
+
+  def server_is_set_up
+    if @server_is_set_up.nil?
+      return false;
+    else
+      return @server_is_set_up;
+    end
+  end
+
+  #initialize an object to perform more tests on
+  def setup
+    if !self.server_is_set_up
+      @server = TCPServer.new('localhost', 6000)
+      @port = 5000
+    end
+    @api = DDOS_API.new(1000, 'localhost', @port)
+    @port += 1
+   # @api.config_api('testingConfig.txt')
+  end
+  
+  def teardown
+    #commented this out because it is now unnecessary
+    #@api = nil
+    #GC.start
+  end
+
+  def test_get_id_by_ip
+    #make sure that the first connection opened gets an id of 1
+    assert_equal 1, @api.get_id_by_ip('localhost', 6000), 'Failed get_id_by_ip 1'
+    #make sure that the correct id is returned if available
+    assert_equal 1, @api.get_id_by_ip('localhost', 6000), 'Failed get_id_by_ip 2'
+    #ensure the text 'self' returns an id of -1
+    assert_equal -1, @api.get_id_by_ip('self', nil), 'Failed get_id_by_ip 3'
+  end
+
+  def test_create_connect
+    #assert correct operation
+    assert_equal [0, 1], @api.create_connect('localhost', 6000), 'Failed create_connect 1'
+    #check error handling
+    assert_not_equal [1, 2], @api.create_connect('sdfsdfsd', 6001), 'Failed create_connect 2'
+    assert_not_equal [1,2], @api.create_connect('localhost', fail), 'Failed create_connect 3'
+  end
+
+end

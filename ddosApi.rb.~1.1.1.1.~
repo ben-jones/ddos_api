@@ -20,13 +20,9 @@
 require 'socket'
 require 'thread'
 
-
 #Code for ADPAR(API for DDoS Prevention And Recover)
-
-#Main API code
 class DDOS_API  
 
-  attr_accessor :server
 
   #methods for testing-> lets me get and set variables
   def status_unsure=(array)
@@ -182,13 +178,13 @@ class DDOS_API
     @alive = true
 
     #set up the tables and maxId for conversion between ids and ips
-    @to_id_table = {"self #{nil}" => -1}
+    @to_id_table = {"self" => -1}
     @to_ip_table = {-1 => [@local_ip, @local_port]}
     @maxId = 1
 
     #set up threads
     #now set up a thread to accept new connections
-    self.server = TCPServer.new(@local_ip, @local_port)
+    server = TCPServer.new(@local_ip, @local_port)
     @accept_threadT = Thread.new(server) {|server| accept_thread(server)}
     #and another thread to handle input
     @input_threadT = Thread.new { input_thread()}
@@ -204,7 +200,7 @@ class DDOS_API
     @status_unsure = Array.new(6){[]}
     @dead_connects = Array.new(6){[]}
 
-    self.set_service_object = service_object if !service_object.nil?
+    set_service_object = service_object if !service_object.nil?
   end
 
   #config_api: will read in the ip address of the next server to failover to and
@@ -1098,6 +1094,7 @@ class DDOS_API
     @connects[1][index] = address
     @connects[2][index] = port
     @connects[3][index] = Time.now
+    @maxId = @maxId + 1
     id = @connects[4][index] = get_id_by_ip(address, port)
     @connects[5][index] = true
     return [index, id]
@@ -1300,16 +1297,6 @@ class DDOS_API
       return false
     end
   end    
-
-  def close_api
-    if !@connects.nil?
-      for index in @connects[0].each_index do
-        @connects[0][index].close
-      end
-    end
-    self.server.close
-  end
-
  public :still_alive, :check_connect_alive
 
 end
