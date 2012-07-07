@@ -1,0 +1,14 @@
+#setup_methods.rb
+#Ben Jones
+#ECE H491 Summer 2012
+#setup_methods.rb: this file contains the unit tests to ensure that a properly
+#formed API instance is created and initialized
+
+class SetupMethods < Test::Unit::TestCase
+
+  def self.startup
+    @@port = 5000
+    @@server_port = 6000
+    @@server = TCPServer.new('localhost', @@server_port)
+    @@listening = Thread.new { @@server.listen}
+  end

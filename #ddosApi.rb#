@@ -30,6 +30,9 @@ class Connection
 end
 
 
+
+
+
 #Main API code
 class DDOS_API  
 
@@ -1184,7 +1187,7 @@ class DDOS_API
   end
   
   #delete_elem(int index, reference * list): will delete the connection with the
-  # given index on the list. This function will not close the connection however.
+p  # given index on the list. This function will not close the connection however.
   # Will return 0 for failure, 1 for success.
   def delete_elem(index, list)
     #delete all the data

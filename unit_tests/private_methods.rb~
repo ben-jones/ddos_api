@@ -5,7 +5,7 @@
 # simple in that they do not need networking support and primarily verify
 # helper functions like create_connect
 require 'test-unit'
-require_relative "../ddosApi.rb"
+require_relative "../ddosApiWithConnection.rb"
 require 'socket'
 require 'thread'
 
@@ -35,7 +35,8 @@ class SimpleTests < Test::Unit::TestCase
 
   #setup method called before each test method(starts with test_)
   def setup
-    @api = DDOS_API.new(1000, 'localhost', @@port)
+#    @api = DDOS_API.new(1000, 'localhost', @@port)
+    @api = DDOS_API.new(:failover_timeout=>1000, :local_ip=>'localhost', :local_port=>@@port)
     @@port += 1
    # @api.config_api('testingConfig.txt')
   end
@@ -48,6 +49,14 @@ class SimpleTests < Test::Unit::TestCase
     # @server.close
   end
 
+  def test_create_connect
+    #assert correct operation
+    assert_equal [0, 1], @api.create_connect('localhost', @@server_port), 'Failed create_connect 1'
+    #check error handling
+#    assert_not_equal [1, 2], @api.create_connect('sdfsdfsd', @@server_port + 1), 'Failed create_connect 2'
+#    assert_not_equal [1,2], @api.create_connect('localhost', 'fail'), 'Failed create_connect 3'
+  end
+
   def test_get_id_by_ip
     #make sure that the first connection opened gets an id of 1
     assert_equal 1, @api.get_id_by_ip('localhost', @@server_port), 'Failed get_id_by_ip 1'
@@ -55,14 +64,6 @@ class SimpleTests < Test::Unit::TestCase
     assert_equal 1, @api.get_id_by_ip('localhost', @@server_port), 'Failed get_id_by_ip 2'
     #ensure the text 'self' returns an id of -1
     assert_equal -1, @api.get_id_by_ip('self', nil), 'Failed get_id_by_ip 3'
-  end
-
-  def test_create_connect
-    #assert correct operation
-    assert_equal [0, 1], @api.create_connect('localhost', @@server_port), 'Failed create_connect 1'
-    #check error handling
-#    assert_not_equal [1, 2], @api.create_connect('sdfsdfsd', @@server_port + 1), 'Failed create_connect 2'
-#    assert_not_equal [1,2], @api.create_connect('localhost', 'fail'), 'Failed create_connect 3'
   end
 
 end
